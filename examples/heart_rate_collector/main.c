@@ -25,6 +25,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "civetweb.h"
+
 #ifdef _WIN32
 #define DEFAULT_UART_PORT_NAME "COM1"
 #define DEFAULT_BAUD_RATE 1000000 /**< The baud rate to be used for serial communication with nRF5 device. */
@@ -58,7 +60,7 @@ enum
 #define CONNECTION_SUPERVISION_TIMEOUT  MSEC_TO_UNITS(4000, UNIT_10_MS)  /**< Determines supervision time-out in units of 10 milliseconds. */
 
 #define TARGET_DEV_NAME "Nordic_HRM" /**< Connect to a peripheral using a given advertising name here. */
-#define MAX_PEER_COUNT 1            /**< Maximum number of peer's application intends to manage. */
+#define MAX_PEER_COUNT 3            /**< Maximum number of peer's application intends to manage. */
 
 #define BLE_UUID_HEART_RATE_SERVICE          0x180D /**< Heart Rate service UUID. */
 #define BLE_UUID_HEART_RATE_MEASUREMENT_CHAR 0x2A37 /**< Heart Rate Measurement characteristic UUID. */
@@ -173,8 +175,9 @@ static void on_connected(const ble_gap_evt_t * const p_ble_gap_evt)
     printf("Connection established\n");
     fflush(stdout);
 
-    m_connected_devices++;
+
     m_connection_handle = p_ble_gap_evt->conn_handle;
+    m_connected_devices++;
     m_connection_is_in_progress = false;
 
     service_discovery_start();
@@ -198,10 +201,10 @@ static void on_adv_report(const ble_gap_evt_t * const p_ble_gap_evt)
 
     if (find_adv_name(&p_ble_gap_evt->params.adv_report, TARGET_DEV_NAME))
     {
-        if (m_connected_devices >= MAX_PEER_COUNT || m_connection_is_in_progress)
-        {
-            return;
-        }
+        //if (m_connected_devices >= MAX_PEER_COUNT || m_connection_is_in_progress)
+        //{
+        //    return;
+        //}
 
         err_code = sd_ble_gap_connect(m_adapter,
                                       &(p_ble_gap_evt->params.adv_report.peer_addr),
@@ -603,13 +606,12 @@ static uint32_t ble_stack_init()
 #elif NRF_SD_BLE_API < 3
     ble_enable_params.gatts_enable_params.attr_tab_size     = BLE_GATTS_ATTR_TAB_SIZE_DEFAULT;
     ble_enable_params.gatts_enable_params.service_changed   = false;
-    ble_enable_params.gap_enable_params.periph_conn_count   = 1;
-    ble_enable_params.gap_enable_params.central_conn_count  = 1;
-    ble_enable_params.gap_enable_params.central_sec_count   = 1;
+    ble_enable_params.gap_enable_params.periph_conn_count   = 3; //@TODO ?
+    ble_enable_params.gap_enable_params.central_conn_count  = 3; //@TODO ?
+    ble_enable_params.gap_enable_params.central_sec_count   = 3; //@TODO ?
     ble_enable_params.common_enable_params.p_conn_bw_counts = NULL;
     ble_enable_params.common_enable_params.vs_uuid_count    = 1;
 #endif
-
 #if NRF_SD_BLE_API <= 3
     err_code = sd_ble_enable(m_adapter, &ble_enable_params, app_ram_base);
 #else
@@ -833,6 +835,7 @@ static void ble_evt_dispatch(adapter_t * adapter, ble_evt_t * p_ble_evt)
     {
         case BLE_GAP_EVT_CONNECTED:
             on_connected(&(p_ble_evt->evt.gap_evt));
+            scan_start();
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
@@ -892,6 +895,34 @@ static void ble_evt_dispatch(adapter_t * adapter, ble_evt_t * p_ble_evt)
     }
 }
 
+int
+HomeHandler(struct mg_connection *conn, void *cbdata)
+{
+	mg_printf(conn,
+	          "HTTP/1.1 200 OK\r\nContent-Type: "
+	          "text/html\r\nConnection: close\r\n\r\n");
+	mg_printf(conn, "<a href=\"devices\">Devices</a>\n");
+	mg_printf(conn, "<a href=\"info\">Info</a>\n");
+	return 1;
+}
+
+int
+InfoHandler(struct mg_connection *conn, void *cbdata)
+{
+	mg_printf(conn,
+	          "HTTP/1.1 200 OK\r\nContent-Type: "
+	          "text/html\r\nConnection: close\r\n\r\n");
+	mg_printf(conn, "Connected devices: %d\n", m_connected_devices);
+	return 1;
+}
+
+int
+log_message(const struct mg_connection *conn, const char *message)
+{
+	printf("LOG");
+	return 1;
+}
+
 /**@brief Function for application main entry.
  *
  * @param[in] argc Number of arguments (program expects 0 or 1 arguments).
@@ -903,6 +934,36 @@ int main(int argc, char * argv[])
     char *   serial_port = DEFAULT_UART_PORT_NAME;
     uint32_t baud_rate = DEFAULT_BAUD_RATE;
     uint8_t  cccd_value = 0;
+
+    printf("BBBBBBBB!!!!!!!!!!!!!!!!!!!!!!!!!\r\n");
+    const char *options[] = {"listening_ports",
+							 "8080",
+							 "request_timeout_ms",
+							 "10000",
+							 "enable_auth_domain_check",
+							 "no",
+							 0};
+
+    struct mg_callbacks callbacks;
+    struct mg_context *ctx;
+	mg_init_library(0);
+	int port_cnt;
+	struct mg_server_ports ports[32];
+	memset(&callbacks, 0, sizeof(callbacks));
+	callbacks.log_message = log_message;
+
+	ctx = mg_start(&callbacks, 0, options);
+
+	if (ctx == NULL) {
+		printf("Cannot start CivetWeb - mg_start failed.\n");
+		return 1;
+	}
+
+	mg_set_request_handler(ctx, "", HomeHandler, 0);
+	mg_set_request_handler(ctx, "/info", InfoHandler, 0);
+
+	memset(ports, 0, sizeof(ports));
+	port_cnt = mg_get_server_ports(ctx, 32, ports);
 
     if (argc > 2)
     {

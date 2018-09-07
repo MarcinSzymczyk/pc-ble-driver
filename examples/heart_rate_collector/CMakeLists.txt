@@ -7,6 +7,8 @@ set(Boost_USE_MULTITHREADED ON)
 # can run anywhere
 set(Boost_USE_STATIC_LIBS ON)
 
+set(CMAKE_C_FLAGS "-pthread")
+
 # Find the necessary boost components on the system.
 # Minimum version required is 1.54.0
 find_package ( Boost 1.54.0 REQUIRED COMPONENTS thread system regex date_time chrono )
@@ -19,6 +21,7 @@ include_directories (
     ../../include/common/sdk_compat
     ../../include/common
     ../../include/common/internal/transport
+    ../../../civetweb/include
 )
 
 if(MSVC)
@@ -27,8 +30,8 @@ if(MSVC)
 endif()
 
 # Build executable
-add_executable(hrc_v2 main.c)
-add_executable(hrc_v5 main.c)
+add_executable(hrc_v2 main.c ../../../civetweb/src/civetweb.c ../../../civetweb/src/md5.inl ../../../civetweb/src/sha1.inl ../../../civetweb/src/handle_form.inl ../../../civetweb/src/timer.inl)
+add_executable(hrc_v5 main.c ../../../civetweb/src/civetweb.c ../../../civetweb/src/md5.inl ../../../civetweb/src/sha1.inl ../../../civetweb/src/handle_form.inl ../../../civetweb/src/timer.inl)
 
 target_compile_definitions(hrc_v2 PRIVATE -DNRF_SD_BLE_API=2)
 target_compile_definitions(hrc_v5 PRIVATE -DNRF_SD_BLE_API=5)
@@ -45,5 +48,5 @@ else()
     target_link_libraries(hrc_v5 PRIVATE pc_ble_driver_shared_sd_api_v5)
 endif()
 
-target_link_libraries(hrc_v2 PRIVATE ${Boost_LIBRARIES})
-target_link_libraries(hrc_v5 PRIVATE ${Boost_LIBRARIES})
+target_link_libraries(hrc_v2 PRIVATE ${Boost_LIBRARIES} dl)
+target_link_libraries(hrc_v5 PRIVATE ${Boost_LIBRARIES} dl)
