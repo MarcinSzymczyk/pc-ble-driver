@@ -54,16 +54,21 @@ enum
 #define SCAN_WINDOW   0x0050 /**< Determines scan window in units of 0.625 milliseconds. */
 #define SCAN_TIMEOUT  0x0    /**< Scan timeout between 0x01 and 0xFFFF in seconds, 0x0 disables timeout. */
 
-#define MIN_CONNECTION_INTERVAL         MSEC_TO_UNITS(7.5, UNIT_1_25_MS) /**< Determines minimum connection interval in milliseconds. */
-#define MAX_CONNECTION_INTERVAL         MSEC_TO_UNITS(7.5, UNIT_1_25_MS) /**< Determines maximum connection interval in milliseconds. */
-#define SLAVE_LATENCY                   0                                /**< Slave Latency in number of connection events. */
-#define CONNECTION_SUPERVISION_TIMEOUT  MSEC_TO_UNITS(4000, UNIT_10_MS)  /**< Determines supervision time-out in units of 10 milliseconds. */
+#define MIN_CONNECTION_INTERVAL         MSEC_TO_UNITS(15, UNIT_1_25_MS) /**< Determines minimum connection interval in milliseconds. */
+#define MAX_CONNECTION_INTERVAL         MSEC_TO_UNITS(15, UNIT_1_25_MS) /**< Determines maximum connection interval in milliseconds. */
+#define SLAVE_LATENCY                   5                                /**< Slave Latency in number of connection events. */
+#define CONNECTION_SUPERVISION_TIMEOUT  MSEC_TO_UNITS(6000, UNIT_10_MS)  /**< Determines supervision time-out in units of 10 milliseconds. */
 
 #define TARGET_DEV_NAME "Nordic_HRM" /**< Connect to a peripheral using a given advertising name here. */
 #define MAX_PEER_COUNT 3            /**< Maximum number of peer's application intends to manage. */
 
 #define BLE_UUID_HEART_RATE_SERVICE          0x180D /**< Heart Rate service UUID. */
 #define BLE_UUID_HEART_RATE_MEASUREMENT_CHAR 0x2A37 /**< Heart Rate Measurement characteristic UUID. */
+
+#define BLE_UUID_BATTERY_SERVICE          0x180D
+#define BLE_UUID_BATTERY_MEASUREMENT_CHAR 0x2A37
+
+
 #define BLE_UUID_CCCD                        0x2902
 #define BLE_CCCD_NOTIFY                      0x01
 
@@ -83,7 +88,8 @@ static uint16_t    m_hrm_char_handle = 0;
 static uint16_t    m_hrm_cccd_handle = 0;
 static bool        m_connection_is_in_progress = false;
 static adapter_t * m_adapter = NULL;
-static uint32_t    m_config_id = 2;
+static uint32_t    m_config_id = 1;
+static uint8_t     m_cccd_value = 0;
 
 static const ble_gap_scan_params_t m_scan_param =
 {
@@ -290,10 +296,10 @@ static void on_service_discovery_response(const ble_gattc_evt_t * const p_ble_ga
     m_service_start_handle  = service->handle_range.start_handle;
     m_service_end_handle    = service->handle_range.end_handle;
 
-    printf("Discovered heart rate service. UUID: 0x%04X, "
+    /*printf("Discovered heart rate service. UUID: 0x%04X, "
                    "start handle: 0x%04X, end handle: 0x%04X\n",
         service->uuid.uuid, m_service_start_handle, m_service_end_handle);
-    fflush(stdout);
+    fflush(stdout);*/
 
     char_discovery_start();
 }
@@ -315,16 +321,16 @@ static void on_characteristic_discovery_response(const ble_gattc_evt_t * const p
         return;
     }
 
-    printf("Received characteristic discovery response, characteristics count: %d\n", count);
-    fflush(stdout);
+    //printf("Received characteristic discovery response, characteristics count: %d\n", count);
+    //fflush(stdout);
 
     for (int i = 0; i < count; i++)
     {
-        printf("Characteristic handle: 0x%04X, UUID: 0x%04X\n",
+        /*printf("Characteristic handle: 0x%04X, UUID: 0x%04X\n",
                p_ble_gattc_evt->params.char_disc_rsp.chars[i].handle_decl,
                p_ble_gattc_evt->params.char_disc_rsp.chars[i].uuid.uuid);
         fflush(stdout);
-
+		*/
         if (p_ble_gattc_evt->params.char_disc_rsp.chars[i].uuid.uuid ==
             BLE_UUID_HEART_RATE_MEASUREMENT_CHAR)
         {
@@ -357,16 +363,16 @@ static void on_descriptor_discovery_response(const ble_gattc_evt_t * const p_ble
 
     for (int i = 0; i < count; i++)
     {
-        printf("Descriptor handle: 0x%04X, UUID: 0x%04X\n",
+        /*printf("Descriptor handle: 0x%04X, UUID: 0x%04X\n",
                p_ble_gattc_evt->params.desc_disc_rsp.descs[i].handle,
                p_ble_gattc_evt->params.desc_disc_rsp.descs[i].uuid.uuid);
-        fflush(stdout);
+        fflush(stdout);*/
 
         if (p_ble_gattc_evt->params.desc_disc_rsp.descs[i].uuid.uuid == BLE_UUID_CCCD)
         {
             m_hrm_cccd_handle = p_ble_gattc_evt->params.desc_disc_rsp.descs[i].handle;
-            printf("Press enter to toggle notifications on the HRM characteristic\n");
-            fflush(stdout);
+            /*printf("Press enter to toggle notifications on the HRM characteristic\n");
+            fflush(stdout);*/
         }
     }
 }
@@ -399,7 +405,7 @@ static void on_hvx(const ble_gattc_evt_t * const p_ble_gattc_evt)
             p_ble_gattc_evt->params.hvx.handle <= m_hrm_cccd_handle) // Heart rate measurement.
     {
         // We know the heart rate reading is encoded as 2 bytes [flag, value].
-        printf("Received heart rate measurement: %d\n", p_ble_gattc_evt->params.hvx.data[1]);
+        printf("Received data: %d, connection: %d\n", p_ble_gattc_evt->params.hvx.data[1], p_ble_gattc_evt->conn_handle);
     }
     else // Unknown data.
     {
@@ -418,7 +424,7 @@ static void on_hvx(const ble_gattc_evt_t * const p_ble_gattc_evt)
 static void on_conn_params_update_request(const ble_gap_evt_t * const p_ble_gap_evt)
 {
     uint32_t err_code = sd_ble_gap_conn_param_update(m_adapter, m_connection_handle,
-                                            &(p_ble_gap_evt->
+                                            	&(p_ble_gap_evt->
                                                     params.conn_param_update_request.conn_params));
     if (err_code != NRF_SUCCESS)
     {
@@ -664,9 +670,9 @@ uint32_t ble_cfg_set(uint8_t conn_cfg_tag)
 
     // Configure the connection roles.
     memset(&ble_cfg, 0, sizeof(ble_cfg));
-    ble_cfg.gap_cfg.role_count_cfg.periph_role_count  = 1;
+    ble_cfg.gap_cfg.role_count_cfg.periph_role_count  = 0;
     ble_cfg.gap_cfg.role_count_cfg.central_role_count = 5;
-    ble_cfg.gap_cfg.role_count_cfg.central_sec_count  = 5;
+    ble_cfg.gap_cfg.role_count_cfg.central_sec_count  = 0;
 
     error_code = sd_ble_cfg_set(m_adapter, BLE_GAP_CFG_ROLE_COUNT, &ble_cfg, ram_start);
     if (error_code != NRF_SUCCESS)
@@ -797,14 +803,14 @@ static uint32_t descr_discovery_start()
 static uint32_t hrm_cccd_set(uint8_t value)
 {
     ble_gattc_write_params_t write_params;
-    uint8_t                  cccd_value[2] = {value, 0};
+    uint8_t                  cccd_value[2] = {(BLE_CCCD_NOTIFY), 0};
 
     printf("Setting HRM CCCD\n");
     fflush(stdout);
 
     if (m_hrm_cccd_handle == 0)
     {
-        printf("Error. No CCCD handle has been found\n");
+        printf(">>>>>Error. No CCCD handle has been found\n");
         fflush(stdout);
         return NRF_ERROR_INVALID_STATE;
     }
@@ -865,6 +871,7 @@ static void ble_evt_dispatch(adapter_t * adapter, ble_evt_t * p_ble_evt)
 
         case BLE_GATTC_EVT_DESC_DISC_RSP:
             on_descriptor_discovery_response(&(p_ble_evt->evt.gattc_evt));
+			hrm_cccd_set(m_cccd_value);
             break;
 
         case BLE_GATTC_EVT_WRITE_RSP:
@@ -934,9 +941,8 @@ int main(int argc, char * argv[])
     uint32_t error_code;
     char *   serial_port = DEFAULT_UART_PORT_NAME;
     uint32_t baud_rate = DEFAULT_BAUD_RATE;
-    uint8_t  cccd_value = 0;
 
-    printf("BBBBBBBB!!!!!!!!!!!!!!!!!!!!!!!!!\r\n");
+
     const char *options[] = {"listening_ports",
 							 "8080",
 							 "request_timeout_ms",
@@ -1051,8 +1057,5 @@ int main(int argc, char * argv[])
             return NRF_SUCCESS;
         }
 
-        // Toggle notifications on the HRM characteristic every time user input is received.
-        cccd_value ^= BLE_CCCD_NOTIFY;
-        hrm_cccd_set(cccd_value);
     }
 }
