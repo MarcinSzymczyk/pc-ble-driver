@@ -83,7 +83,7 @@ static uint16_t    m_hrm_char_handle = 0;
 static uint16_t    m_hrm_cccd_handle = 0;
 static bool        m_connection_is_in_progress = false;
 static adapter_t * m_adapter = NULL;
-static uint32_t    m_config_id = 1;
+static uint32_t    m_config_id = 2;
 
 static const ble_gap_scan_params_t m_scan_param =
 {
@@ -178,7 +178,7 @@ static void on_connected(const ble_gap_evt_t * const p_ble_gap_evt)
 
     m_connection_handle = p_ble_gap_evt->conn_handle;
     m_connected_devices++;
-    m_connection_is_in_progress = false;
+    //m_connection_is_in_progress = false;
 
     service_discovery_start();
 }
@@ -221,7 +221,7 @@ static void on_adv_report(const ble_gap_evt_t * const p_ble_gap_evt)
             return;
         }
 
-        m_connection_is_in_progress = true;
+        //m_connection_is_in_progress = true;
     }
 }
 
@@ -233,7 +233,7 @@ static void on_timeout(const ble_gap_evt_t * const p_ble_gap_evt)
 {
     if (p_ble_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_CONN)
     {
-        m_connection_is_in_progress = false;
+        //m_connection_is_in_progress = false;
     }
     else if (p_ble_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN)
     {
@@ -606,9 +606,9 @@ static uint32_t ble_stack_init()
 #elif NRF_SD_BLE_API < 3
     ble_enable_params.gatts_enable_params.attr_tab_size     = BLE_GATTS_ATTR_TAB_SIZE_DEFAULT;
     ble_enable_params.gatts_enable_params.service_changed   = false;
-    ble_enable_params.gap_enable_params.periph_conn_count   = 3; //@TODO ?
-    ble_enable_params.gap_enable_params.central_conn_count  = 3; //@TODO ?
-    ble_enable_params.gap_enable_params.central_sec_count   = 3; //@TODO ?
+    ble_enable_params.gap_enable_params.periph_conn_count   = 1;
+    ble_enable_params.gap_enable_params.central_conn_count  = 1;
+    ble_enable_params.gap_enable_params.central_sec_count   = 1;
     ble_enable_params.common_enable_params.p_conn_bw_counts = NULL;
     ble_enable_params.common_enable_params.vs_uuid_count    = 1;
 #endif
@@ -665,8 +665,8 @@ uint32_t ble_cfg_set(uint8_t conn_cfg_tag)
     // Configure the connection roles.
     memset(&ble_cfg, 0, sizeof(ble_cfg));
     ble_cfg.gap_cfg.role_count_cfg.periph_role_count  = 1;
-    ble_cfg.gap_cfg.role_count_cfg.central_role_count = 1;
-    ble_cfg.gap_cfg.role_count_cfg.central_sec_count  = 1;
+    ble_cfg.gap_cfg.role_count_cfg.central_role_count = 5;
+    ble_cfg.gap_cfg.role_count_cfg.central_sec_count  = 5;
 
     error_code = sd_ble_cfg_set(m_adapter, BLE_GAP_CFG_ROLE_COUNT, &ble_cfg, ram_start);
     if (error_code != NRF_SUCCESS)
@@ -678,9 +678,10 @@ uint32_t ble_cfg_set(uint8_t conn_cfg_tag)
 
     memset(&ble_cfg, 0x00, sizeof(ble_cfg));
     ble_cfg.conn_cfg.conn_cfg_tag                 = conn_cfg_tag;
-    ble_cfg.conn_cfg.params.gatt_conn_cfg.att_mtu = 150;
+    ble_cfg.conn_cfg.params.gap_conn_cfg.conn_count = 5; //!!!!!!!!
+    ble_cfg.conn_cfg.params.gap_conn_cfg.event_length = 16;
 
-    error_code = sd_ble_cfg_set(m_adapter, BLE_CONN_CFG_GATT, &ble_cfg, ram_start);
+    error_code = sd_ble_cfg_set(m_adapter, BLE_CONN_CFG_GAP, &ble_cfg, ram_start);
     if (error_code != NRF_SUCCESS)
     {
         printf("sd_ble_cfg_set() failed when attempting to set BLE_CONN_CFG_GATT. Error code: 0x%02X\n", error_code);
