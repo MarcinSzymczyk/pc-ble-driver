@@ -60,19 +60,19 @@ enum
 #define CONNECTION_SUPERVISION_TIMEOUT  MSEC_TO_UNITS(6000, UNIT_10_MS)  /**< Determines supervision time-out in units of 10 milliseconds. */
 
 #define TARGET_DEV_NAME "Nordic_HRM" /**< Connect to a peripheral using a given advertising name here. */
-#define MAX_PEER_COUNT 3            /**< Maximum number of peer's application intends to manage. */
+#define MAX_PEER_COUNT 5            /**< Maximum number of peer's application intends to manage. */
 
 #define BLE_UUID_HEART_RATE_SERVICE          0x180D /**< Heart Rate service UUID. */
 #define BLE_UUID_HEART_RATE_MEASUREMENT_CHAR 0x2A37 /**< Heart Rate Measurement characteristic UUID. */
 
-#define BLE_UUID_BATTERY_SERVICE          0x180D
-#define BLE_UUID_BATTERY_MEASUREMENT_CHAR 0x2A37
+#define BLE_UUID_BATTERY_SERVICE         	0x180F /**< Battery service UUID. */
+#define BLE_UUID_BATTERY_MEASUREMENT_CHAR 	0x2A19 /**< Battery characteristic UUID. */
 
 
 #define BLE_UUID_CCCD                        0x2902
 #define BLE_CCCD_NOTIFY                      0x01
 
-#define STRING_BUFFER_SIZE 50
+#define STRING_BUFFER_SIZE 500
 
 typedef struct
 {
@@ -86,10 +86,19 @@ static uint16_t    m_service_start_handle = 0;
 static uint16_t    m_service_end_handle = 0;
 static uint16_t    m_hrm_char_handle = 0;
 static uint16_t    m_hrm_cccd_handle = 0;
+static uint16_t    m_bat_char_handle = 0;
+static uint16_t    m_bat_cccd_handle = 0;
 static bool        m_connection_is_in_progress = false;
 static adapter_t * m_adapter = NULL;
 static uint32_t    m_config_id = 1;
 static uint8_t     m_cccd_value = 0;
+static bool 	   m_waiting_on_bat = false;
+static bool 	   m_hrm_sub = false;
+static bool		   m_bat_sub = false;
+
+volatile uint32_t battery[MAX_PEER_COUNT] = {0};
+volatile uint32_t heart[MAX_PEER_COUNT] = {0};
+
 
 static const ble_gap_scan_params_t m_scan_param =
 {
@@ -184,7 +193,6 @@ static void on_connected(const ble_gap_evt_t * const p_ble_gap_evt)
 
     m_connection_handle = p_ble_gap_evt->conn_handle;
     m_connected_devices++;
-    //m_connection_is_in_progress = false;
 
     service_discovery_start();
 }
@@ -202,16 +210,10 @@ static void on_adv_report(const ble_gap_evt_t * const p_ble_gap_evt)
 
     // Log the Bluetooth device address of advertisement packet received.
     ble_address_to_string_convert(p_ble_gap_evt->params.adv_report.peer_addr, str);
-    printf("Received advertisement report with device address: 0x%s\n", str);
     fflush(stdout);
 
     if (find_adv_name(&p_ble_gap_evt->params.adv_report, TARGET_DEV_NAME))
     {
-        //if (m_connected_devices >= MAX_PEER_COUNT || m_connection_is_in_progress)
-        //{
-        //    return;
-        //}
-
         err_code = sd_ble_gap_connect(m_adapter,
                                       &(p_ble_gap_evt->params.adv_report.peer_addr),
                                       &m_scan_param,
@@ -226,8 +228,6 @@ static void on_adv_report(const ble_gap_evt_t * const p_ble_gap_evt)
             fflush(stdout);
             return;
         }
-
-        //m_connection_is_in_progress = true;
     }
 }
 
@@ -239,7 +239,7 @@ static void on_timeout(const ble_gap_evt_t * const p_ble_gap_evt)
 {
     if (p_ble_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_CONN)
     {
-        //m_connection_is_in_progress = false;
+        ;
     }
     else if (p_ble_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN)
     {
@@ -278,29 +278,36 @@ static void on_service_discovery_response(const ble_gattc_evt_t * const p_ble_ga
         return;
     }
 
-    if (count > 1)
+    printf("Services discovered\n");
+	fflush(stdout);
+
+
+    int i = 0;
+    for(i = 0; i<=count; i++)
     {
-        printf("Warning, discovered multiple primary services. Ignoring all but the first\n");
+		service = &(p_ble_gattc_evt->params.prim_srvc_disc_rsp.services[i]);
+
+		if (service->uuid.uuid == BLE_UUID_HEART_RATE_SERVICE)
+		{
+			printf("Discovered Heart Rate Service.\r\n");
+			m_service_start_handle  = service->handle_range.start_handle;
+
+		}
+		else if(service->uuid.uuid == BLE_UUID_BATTERY_SERVICE)
+		{
+			printf("Discovered Battery Service.\r\n");
+			m_service_end_handle    = service->handle_range.end_handle;
+		}
+		else
+		{
+			printf("Unknown service discovered with UUID: 0x%04X\n", service->uuid.uuid);
+			fflush(stdout);
+		}
+		printf("Discovered service. UUID: 0x%04X, "
+		                   "start handle: 0x%04X, end handle: 0x%04X\n",
+		        service->uuid.uuid, service->handle_range.start_handle, service->handle_range.end_handle);
+		    fflush(stdout);
     }
-
-    service_index = 0; /* We expect to discover only the Heart Rate service as requested. */
-    service = &(p_ble_gattc_evt->params.prim_srvc_disc_rsp.services[service_index]);
-
-    if (service->uuid.uuid != BLE_UUID_HEART_RATE_SERVICE)
-    {
-        printf("Unknown service discovered with UUID: 0x%04X\n", service->uuid.uuid);
-        fflush(stdout);
-        return;
-    }
-
-    m_service_start_handle  = service->handle_range.start_handle;
-    m_service_end_handle    = service->handle_range.end_handle;
-
-    /*printf("Discovered heart rate service. UUID: 0x%04X, "
-                   "start handle: 0x%04X, end handle: 0x%04X\n",
-        service->uuid.uuid, m_service_start_handle, m_service_end_handle);
-    fflush(stdout);*/
-
     char_discovery_start();
 }
 
@@ -321,20 +328,19 @@ static void on_characteristic_discovery_response(const ble_gattc_evt_t * const p
         return;
     }
 
-    //printf("Received characteristic discovery response, characteristics count: %d\n", count);
-    //fflush(stdout);
-
     for (int i = 0; i < count; i++)
     {
-        /*printf("Characteristic handle: 0x%04X, UUID: 0x%04X\n",
-               p_ble_gattc_evt->params.char_disc_rsp.chars[i].handle_decl,
-               p_ble_gattc_evt->params.char_disc_rsp.chars[i].uuid.uuid);
-        fflush(stdout);
-		*/
         if (p_ble_gattc_evt->params.char_disc_rsp.chars[i].uuid.uuid ==
             BLE_UUID_HEART_RATE_MEASUREMENT_CHAR)
         {
             m_hrm_char_handle = p_ble_gattc_evt->params.char_disc_rsp.chars[i].handle_decl;
+            fflush(stdout);
+        }
+        else if(p_ble_gattc_evt->params.char_disc_rsp.chars[i].uuid.uuid ==
+        		BLE_UUID_BATTERY_MEASUREMENT_CHAR)
+        {
+        	m_bat_char_handle = p_ble_gattc_evt->params.char_disc_rsp.chars[i].handle_decl;
+        	fflush(stdout);
         }
     }
 
@@ -363,16 +369,18 @@ static void on_descriptor_discovery_response(const ble_gattc_evt_t * const p_ble
 
     for (int i = 0; i < count; i++)
     {
-        /*printf("Descriptor handle: 0x%04X, UUID: 0x%04X\n",
-               p_ble_gattc_evt->params.desc_disc_rsp.descs[i].handle,
-               p_ble_gattc_evt->params.desc_disc_rsp.descs[i].uuid.uuid);
-        fflush(stdout);*/
-
-        if (p_ble_gattc_evt->params.desc_disc_rsp.descs[i].uuid.uuid == BLE_UUID_CCCD)
+        if ((p_ble_gattc_evt->params.desc_disc_rsp.descs[i].uuid.uuid == BLE_UUID_CCCD)
+			&& (!m_waiting_on_bat))
         {
             m_hrm_cccd_handle = p_ble_gattc_evt->params.desc_disc_rsp.descs[i].handle;
-            /*printf("Press enter to toggle notifications on the HRM characteristic\n");
-            fflush(stdout);*/
+            m_waiting_on_bat = true;
+            descr_discovery_start();
+        }
+        else if((p_ble_gattc_evt->params.desc_disc_rsp.descs[i].uuid.uuid == BLE_UUID_CCCD)
+    			&& (m_waiting_on_bat))
+        {
+        	m_bat_cccd_handle = p_ble_gattc_evt->params.desc_disc_rsp.descs[i].handle;
+			m_waiting_on_bat = false;
         }
     }
 }
@@ -401,15 +409,21 @@ static void on_write_response(const ble_gattc_evt_t * const p_ble_gattc_evt)
  */
 static void on_hvx(const ble_gattc_evt_t * const p_ble_gattc_evt)
 {
-    if (p_ble_gattc_evt->params.hvx.handle >= m_hrm_char_handle ||
+    if (p_ble_gattc_evt->params.hvx.handle >= m_hrm_char_handle &&
             p_ble_gattc_evt->params.hvx.handle <= m_hrm_cccd_handle) // Heart rate measurement.
     {
-        // We know the heart rate reading is encoded as 2 bytes [flag, value].
-        printf("Received data: %d, connection: %d\n", p_ble_gattc_evt->params.hvx.data[1], p_ble_gattc_evt->conn_handle);
+        printf("Received HRS data: %d, connection: %d\n", p_ble_gattc_evt->params.hvx.data[1], p_ble_gattc_evt->conn_handle);
+        heart[p_ble_gattc_evt->conn_handle] = p_ble_gattc_evt->params.hvx.data[1];
+    }
+    else if(p_ble_gattc_evt->params.hvx.handle >= m_bat_char_handle &&
+            p_ble_gattc_evt->params.hvx.handle <= m_bat_cccd_handle)
+    {
+    	printf("Received BAT data: %d, connection: %d\n", p_ble_gattc_evt->params.hvx.data[0], p_ble_gattc_evt->conn_handle);
+    	battery[p_ble_gattc_evt->conn_handle] = p_ble_gattc_evt->params.hvx.data[0];
     }
     else // Unknown data.
     {
-        printf("Un-parsed data received on handle: %04X\n", p_ble_gattc_evt->params.hvx.handle);
+        printf("Unknown data received. Data handle: %d -- DATA: %d %d\n", p_ble_gattc_evt->params.hvx.handle, p_ble_gattc_evt->params.hvx.data[0], p_ble_gattc_evt->params.hvx.data[1]);
     }
 
     fflush(stdout);
@@ -670,9 +684,9 @@ uint32_t ble_cfg_set(uint8_t conn_cfg_tag)
 
     // Configure the connection roles.
     memset(&ble_cfg, 0, sizeof(ble_cfg));
-    ble_cfg.gap_cfg.role_count_cfg.periph_role_count  = 0;
+    ble_cfg.gap_cfg.role_count_cfg.periph_role_count  = 1;
     ble_cfg.gap_cfg.role_count_cfg.central_role_count = 5;
-    ble_cfg.gap_cfg.role_count_cfg.central_sec_count  = 0;
+    ble_cfg.gap_cfg.role_count_cfg.central_sec_count  = 5;
 
     error_code = sd_ble_cfg_set(m_adapter, BLE_GAP_CFG_ROLE_COUNT, &ble_cfg, ram_start);
     if (error_code != NRF_SUCCESS)
@@ -729,24 +743,20 @@ static uint32_t scan_start()
 static uint32_t service_discovery_start()
 {
     uint32_t   err_code;
-    uint16_t   start_handle = 0x01;
-    ble_uuid_t srvc_uuid;
+    uint16_t   start_handle = 0x03;
 
     printf("Discovering primary services\n");
     fflush(stdout);
 
-    srvc_uuid.type = BLE_UUID_TYPE_BLE;
-    srvc_uuid.uuid = BLE_UUID_HEART_RATE_SERVICE;
-
     // Initiate procedure to find the primary BLE_UUID_HEART_RATE_SERVICE.
     err_code = sd_ble_gattc_primary_services_discover(m_adapter,
                                                       m_connection_handle, start_handle,
-                                                      &srvc_uuid);
-    if (err_code != NRF_SUCCESS)
-    {
-        printf("Failed to initiate or continue a GATT Primary Service Discovery procedure\n");
-        fflush(stdout);
-    }
+                                                      NULL);
+	if (err_code != NRF_SUCCESS)
+	{
+		printf("Failed to initiate or continue a GATT Primary Service Discovery procedure\n");
+		fflush(stdout);
+	}
 
     return err_code;
 }
@@ -790,10 +800,32 @@ static uint32_t descr_discovery_start()
         return NRF_ERROR_INVALID_STATE;
     }
 
-    handle_range.start_handle = m_hrm_char_handle;
-    handle_range.end_handle = m_service_end_handle;
+    uint32_t err;
+    if(!m_waiting_on_bat)
+    {
+		handle_range.start_handle = m_hrm_char_handle;
+		handle_range.end_handle = m_service_end_handle;
+		err = sd_ble_gattc_descriptors_discover(m_adapter, m_connection_handle, &handle_range);
+		if (err != NRF_SUCCESS)
+		{
+			printf("Error finding descriptors for HRS!\n");
+			fflush(stdout);
+		}
+    }
+    else
+    {
+		handle_range.start_handle = m_bat_char_handle;
+		handle_range.end_handle = m_service_end_handle;
 
-    return sd_ble_gattc_descriptors_discover(m_adapter, m_connection_handle, &handle_range);
+		err = sd_ble_gattc_descriptors_discover(m_adapter, m_connection_handle, &handle_range);
+		if (err == NRF_ERROR_BUSY)
+		{
+			printf("Error finding descriptors for Battery!\n");
+			fflush(stdout);
+		}
+    }
+
+    return err;
 }
 
 /**@brief Function that write's the HRM characteristic's CCCD.
@@ -805,12 +837,12 @@ static uint32_t hrm_cccd_set(uint8_t value)
     ble_gattc_write_params_t write_params;
     uint8_t                  cccd_value[2] = {(BLE_CCCD_NOTIFY), 0};
 
-    printf("Setting HRM CCCD\n");
+
     fflush(stdout);
 
     if (m_hrm_cccd_handle == 0)
     {
-        printf(">>>>>Error. No CCCD handle has been found\n");
+        printf("Error. No CCCD handle has been found\n");
         fflush(stdout);
         return NRF_ERROR_INVALID_STATE;
     }
@@ -821,7 +853,34 @@ static uint32_t hrm_cccd_set(uint8_t value)
     write_params.write_op = BLE_GATT_OP_WRITE_REQ;
     write_params.offset = 0;
 
-    return sd_ble_gattc_write(m_adapter, m_connection_handle, &write_params);
+    uint32_t err = sd_ble_gattc_write(m_adapter, m_connection_handle, &write_params);
+
+    printf("Subscribing to HRM...");
+}
+
+static uint32_t bat_cccd_set(uint8_t value)
+{
+    ble_gattc_write_params_t write_params;
+    uint8_t                  cccd_value[2] = {(BLE_CCCD_NOTIFY), 0};
+
+    fflush(stdout);
+
+    if (m_bat_cccd_handle == 0)
+    {
+        printf("Error. No CCCD handle has been found\n");
+        fflush(stdout);
+        return NRF_ERROR_INVALID_STATE;
+    }
+
+    write_params.handle = m_bat_cccd_handle;
+    write_params.len = 2;
+    write_params.p_value = cccd_value;
+    write_params.write_op = BLE_GATT_OP_WRITE_REQ;
+    write_params.offset = 0;
+
+    uint32_t err = sd_ble_gattc_write(m_adapter, m_connection_handle, &write_params);
+
+    printf("Subscribing to Battery...");
 }
 
 /**@brief Function for handling the Application's BLE Stack events.
@@ -842,7 +901,6 @@ static void ble_evt_dispatch(adapter_t * adapter, ble_evt_t * p_ble_evt)
     {
         case BLE_GAP_EVT_CONNECTED:
             on_connected(&(p_ble_evt->evt.gap_evt));
-            scan_start();
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
@@ -851,6 +909,7 @@ static void ble_evt_dispatch(adapter_t * adapter, ble_evt_t * p_ble_evt)
             fflush(stdout);
             m_connected_devices--;
             m_connection_handle = 0;
+            scan_start();
             break;
 
         case BLE_GAP_EVT_ADV_REPORT:
@@ -871,11 +930,26 @@ static void ble_evt_dispatch(adapter_t * adapter, ble_evt_t * p_ble_evt)
 
         case BLE_GATTC_EVT_DESC_DISC_RSP:
             on_descriptor_discovery_response(&(p_ble_evt->evt.gattc_evt));
-			hrm_cccd_set(m_cccd_value);
+            if(!m_waiting_on_bat)
+            {
+            	bat_cccd_set(m_cccd_value);
+				m_hrm_sub = true;
+            }
             break;
 
         case BLE_GATTC_EVT_WRITE_RSP:
             on_write_response(&(p_ble_evt->evt.gattc_evt));
+            if(m_bat_sub)
+			{
+				m_bat_sub = false;
+				scan_start();
+			}
+            if(m_hrm_sub)
+            {
+            	hrm_cccd_set(m_cccd_value);
+            	m_hrm_sub = false;
+            	m_bat_sub = true;
+            }
             break;
 
         case BLE_GATTC_EVT_HVX:
@@ -903,8 +977,7 @@ static void ble_evt_dispatch(adapter_t * adapter, ble_evt_t * p_ble_evt)
     }
 }
 
-int
-HomeHandler(struct mg_connection *conn, void *cbdata)
+int HomeHandler(struct mg_connection *conn, void *cbdata)
 {
 	mg_printf(conn,
 	          "HTTP/1.1 200 OK\r\nContent-Type: "
@@ -914,8 +987,7 @@ HomeHandler(struct mg_connection *conn, void *cbdata)
 	return 1;
 }
 
-int
-InfoHandler(struct mg_connection *conn, void *cbdata)
+int InfoHandler(struct mg_connection *conn, void *cbdata)
 {
 	mg_printf(conn,
 	          "HTTP/1.1 200 OK\r\nContent-Type: "
@@ -924,8 +996,28 @@ InfoHandler(struct mg_connection *conn, void *cbdata)
 	return 1;
 }
 
-int
-log_message(const struct mg_connection *conn, const char *message)
+int DevicesHandler(struct mg_connection *conn, void *cbdata)
+{
+	mg_printf(conn,
+	          "HTTP/1.1 200 OK\r\nContent-Type: "
+	          "application/json\r\nConnection: close\r\n\r\n");
+	uint8_t i = 0;
+	mg_printf(conn, "{\r\n\"devices\": [");
+	for(i=0;i<m_connected_devices;i++)
+	{
+		mg_printf(conn, "{\r\n\"id\":\"%d\",\r\n", i);
+		mg_printf(conn, "\"battery\":%d,\r\n", battery[i]);
+		mg_printf(conn, "\"heart_rate\":%d\r\n}", heart[i]);
+		if(i+1<m_connected_devices)
+		{
+			mg_printf(conn, ",\r\n");
+		}
+	}
+	mg_printf(conn, "]\r\n}");
+	return 1;
+}
+
+int log_message(const struct mg_connection *conn, const char *message)
 {
 	printf("LOG");
 	return 1;
@@ -968,6 +1060,7 @@ int main(int argc, char * argv[])
 
 	mg_set_request_handler(ctx, "", HomeHandler, 0);
 	mg_set_request_handler(ctx, "/info", InfoHandler, 0);
+	mg_set_request_handler(ctx, "/devices", DevicesHandler, 0);
 
 	memset(ports, 0, sizeof(ports));
 	port_cnt = mg_get_server_ports(ctx, 32, ports);
