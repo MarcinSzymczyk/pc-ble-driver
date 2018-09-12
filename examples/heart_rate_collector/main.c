@@ -65,8 +65,8 @@ enum
 #define BLE_UUID_HEART_RATE_SERVICE          0x180D /**< Heart Rate service UUID. */
 #define BLE_UUID_HEART_RATE_MEASUREMENT_CHAR 0x2A37 /**< Heart Rate Measurement characteristic UUID. */
 
-#define BLE_UUID_BATTERY_SERVICE         	0x180F /**< Battery service UUID. */
-#define BLE_UUID_BATTERY_MEASUREMENT_CHAR 	0x2A19 /**< Battery characteristic UUID. */
+#define BLE_UUID_BATTERY_SERVICE             0x180F /**< Battery service UUID. */
+#define BLE_UUID_BATTERY_MEASUREMENT_CHAR    0x2A19 /**< Battery characteristic UUID. */
 
 
 #define BLE_UUID_CCCD                        0x2902
@@ -92,9 +92,9 @@ static bool        m_connection_is_in_progress = false;
 static adapter_t * m_adapter = NULL;
 static uint32_t    m_config_id = 1;
 static uint8_t     m_cccd_value = 0;
-static bool 	   m_waiting_on_bat = false;
-static bool 	   m_hrm_sub = false;
-static bool		   m_bat_sub = false;
+static bool        m_waiting_on_bat = false;
+static bool        m_hrm_sub = false;
+static bool        m_bat_sub = false;
 
 volatile uint32_t battery[MAX_PEER_COUNT] = {0};
 volatile uint32_t heart[MAX_PEER_COUNT] = {0};
@@ -279,34 +279,34 @@ static void on_service_discovery_response(const ble_gattc_evt_t * const p_ble_ga
     }
 
     printf("Services discovered\n");
-	fflush(stdout);
+    fflush(stdout);
 
 
     int i = 0;
     for(i = 0; i<=count; i++)
     {
-		service = &(p_ble_gattc_evt->params.prim_srvc_disc_rsp.services[i]);
+        service = &(p_ble_gattc_evt->params.prim_srvc_disc_rsp.services[i]);
 
-		if (service->uuid.uuid == BLE_UUID_HEART_RATE_SERVICE)
-		{
-			printf("Discovered Heart Rate Service.\r\n");
-			m_service_start_handle  = service->handle_range.start_handle;
+        if (service->uuid.uuid == BLE_UUID_HEART_RATE_SERVICE)
+        {
+            printf("Discovered Heart Rate Service.\r\n");
+            m_service_start_handle  = service->handle_range.start_handle;
 
-		}
-		else if(service->uuid.uuid == BLE_UUID_BATTERY_SERVICE)
-		{
-			printf("Discovered Battery Service.\r\n");
-			m_service_end_handle    = service->handle_range.end_handle;
-		}
-		else
-		{
-			printf("Unknown service discovered with UUID: 0x%04X\n", service->uuid.uuid);
-			fflush(stdout);
-		}
-		printf("Discovered service. UUID: 0x%04X, "
-		                   "start handle: 0x%04X, end handle: 0x%04X\n",
-		        service->uuid.uuid, service->handle_range.start_handle, service->handle_range.end_handle);
-		    fflush(stdout);
+        }
+        else if(service->uuid.uuid == BLE_UUID_BATTERY_SERVICE)
+        {
+            printf("Discovered Battery Service.\r\n");
+            m_service_end_handle    = service->handle_range.end_handle;
+        }
+        else
+        {
+            printf("Unknown service discovered with UUID: 0x%04X\n", service->uuid.uuid);
+            fflush(stdout);
+        }
+        printf("Discovered service. UUID: 0x%04X, "
+                           "start handle: 0x%04X, end handle: 0x%04X\n",
+                service->uuid.uuid, service->handle_range.start_handle, service->handle_range.end_handle);
+            fflush(stdout);
     }
     char_discovery_start();
 }
@@ -337,10 +337,10 @@ static void on_characteristic_discovery_response(const ble_gattc_evt_t * const p
             fflush(stdout);
         }
         else if(p_ble_gattc_evt->params.char_disc_rsp.chars[i].uuid.uuid ==
-        		BLE_UUID_BATTERY_MEASUREMENT_CHAR)
+                BLE_UUID_BATTERY_MEASUREMENT_CHAR)
         {
-        	m_bat_char_handle = p_ble_gattc_evt->params.char_disc_rsp.chars[i].handle_decl;
-        	fflush(stdout);
+            m_bat_char_handle = p_ble_gattc_evt->params.char_disc_rsp.chars[i].handle_decl;
+            fflush(stdout);
         }
     }
 
@@ -370,17 +370,17 @@ static void on_descriptor_discovery_response(const ble_gattc_evt_t * const p_ble
     for (int i = 0; i < count; i++)
     {
         if ((p_ble_gattc_evt->params.desc_disc_rsp.descs[i].uuid.uuid == BLE_UUID_CCCD)
-			&& (!m_waiting_on_bat))
+            && (!m_waiting_on_bat))
         {
             m_hrm_cccd_handle = p_ble_gattc_evt->params.desc_disc_rsp.descs[i].handle;
             m_waiting_on_bat = true;
             descr_discovery_start();
         }
         else if((p_ble_gattc_evt->params.desc_disc_rsp.descs[i].uuid.uuid == BLE_UUID_CCCD)
-    			&& (m_waiting_on_bat))
+                && (m_waiting_on_bat))
         {
-        	m_bat_cccd_handle = p_ble_gattc_evt->params.desc_disc_rsp.descs[i].handle;
-			m_waiting_on_bat = false;
+            m_bat_cccd_handle = p_ble_gattc_evt->params.desc_disc_rsp.descs[i].handle;
+            m_waiting_on_bat = false;
         }
     }
 }
@@ -418,8 +418,8 @@ static void on_hvx(const ble_gattc_evt_t * const p_ble_gattc_evt)
     else if(p_ble_gattc_evt->params.hvx.handle >= m_bat_char_handle &&
             p_ble_gattc_evt->params.hvx.handle <= m_bat_cccd_handle)
     {
-    	printf("Received BAT data: %d, connection: %d\n", p_ble_gattc_evt->params.hvx.data[0], p_ble_gattc_evt->conn_handle);
-    	battery[p_ble_gattc_evt->conn_handle] = p_ble_gattc_evt->params.hvx.data[0];
+        printf("Received BAT data: %d, connection: %d\n", p_ble_gattc_evt->params.hvx.data[0], p_ble_gattc_evt->conn_handle);
+        battery[p_ble_gattc_evt->conn_handle] = p_ble_gattc_evt->params.hvx.data[0];
     }
     else // Unknown data.
     {
@@ -438,7 +438,7 @@ static void on_hvx(const ble_gattc_evt_t * const p_ble_gattc_evt)
 static void on_conn_params_update_request(const ble_gap_evt_t * const p_ble_gap_evt)
 {
     uint32_t err_code = sd_ble_gap_conn_param_update(m_adapter, m_connection_handle,
-                                            	&(p_ble_gap_evt->
+                                                &(p_ble_gap_evt->
                                                     params.conn_param_update_request.conn_params));
     if (err_code != NRF_SUCCESS)
     {
@@ -752,11 +752,11 @@ static uint32_t service_discovery_start()
     err_code = sd_ble_gattc_primary_services_discover(m_adapter,
                                                       m_connection_handle, start_handle,
                                                       NULL);
-	if (err_code != NRF_SUCCESS)
-	{
-		printf("Failed to initiate or continue a GATT Primary Service Discovery procedure\n");
-		fflush(stdout);
-	}
+    if (err_code != NRF_SUCCESS)
+    {
+        printf("Failed to initiate or continue a GATT Primary Service Discovery procedure\n");
+        fflush(stdout);
+    }
 
     return err_code;
 }
@@ -803,26 +803,26 @@ static uint32_t descr_discovery_start()
     uint32_t err;
     if(!m_waiting_on_bat)
     {
-		handle_range.start_handle = m_hrm_char_handle;
-		handle_range.end_handle = m_service_end_handle;
-		err = sd_ble_gattc_descriptors_discover(m_adapter, m_connection_handle, &handle_range);
-		if (err != NRF_SUCCESS)
-		{
-			printf("Error finding descriptors for HRS!\n");
-			fflush(stdout);
-		}
+        handle_range.start_handle = m_hrm_char_handle;
+        handle_range.end_handle = m_service_end_handle;
+        err = sd_ble_gattc_descriptors_discover(m_adapter, m_connection_handle, &handle_range);
+        if (err != NRF_SUCCESS)
+        {
+            printf("Error finding descriptors for HRS!\n");
+            fflush(stdout);
+        }
     }
     else
     {
-		handle_range.start_handle = m_bat_char_handle;
-		handle_range.end_handle = m_service_end_handle;
+        handle_range.start_handle = m_bat_char_handle;
+        handle_range.end_handle = m_service_end_handle;
 
-		err = sd_ble_gattc_descriptors_discover(m_adapter, m_connection_handle, &handle_range);
-		if (err == NRF_ERROR_BUSY)
-		{
-			printf("Error finding descriptors for Battery!\n");
-			fflush(stdout);
-		}
+        err = sd_ble_gattc_descriptors_discover(m_adapter, m_connection_handle, &handle_range);
+        if (err == NRF_ERROR_BUSY)
+        {
+            printf("Error finding descriptors for Battery!\n");
+            fflush(stdout);
+        }
     }
 
     return err;
@@ -932,23 +932,23 @@ static void ble_evt_dispatch(adapter_t * adapter, ble_evt_t * p_ble_evt)
             on_descriptor_discovery_response(&(p_ble_evt->evt.gattc_evt));
             if(!m_waiting_on_bat)
             {
-            	bat_cccd_set(m_cccd_value);
-				m_hrm_sub = true;
+                bat_cccd_set(m_cccd_value);
+                m_hrm_sub = true;
             }
             break;
 
         case BLE_GATTC_EVT_WRITE_RSP:
             on_write_response(&(p_ble_evt->evt.gattc_evt));
             if(m_bat_sub)
-			{
-				m_bat_sub = false;
-				scan_start();
-			}
+            {
+                m_bat_sub = false;
+                scan_start();
+            }
             if(m_hrm_sub)
             {
-            	hrm_cccd_set(m_cccd_value);
-            	m_hrm_sub = false;
-            	m_bat_sub = true;
+                hrm_cccd_set(m_cccd_value);
+                m_hrm_sub = false;
+                m_bat_sub = true;
             }
             break;
 
@@ -979,48 +979,48 @@ static void ble_evt_dispatch(adapter_t * adapter, ble_evt_t * p_ble_evt)
 
 int HomeHandler(struct mg_connection *conn, void *cbdata)
 {
-	mg_printf(conn,
-	          "HTTP/1.1 200 OK\r\nContent-Type: "
-	          "text/html\r\nConnection: close\r\n\r\n");
-	mg_printf(conn, "<a href=\"devices\">Devices</a>\n");
-	mg_printf(conn, "<a href=\"info\">Info</a>\n");
-	return 1;
+    mg_printf(conn,
+              "HTTP/1.1 200 OK\r\nContent-Type: "
+              "text/html\r\nConnection: close\r\n\r\n");
+    mg_printf(conn, "<a href=\"devices\">Devices</a>\n");
+    mg_printf(conn, "<a href=\"info\">Info</a>\n");
+    return 1;
 }
 
 int InfoHandler(struct mg_connection *conn, void *cbdata)
 {
-	mg_printf(conn,
-	          "HTTP/1.1 200 OK\r\nContent-Type: "
-	          "text/html\r\nConnection: close\r\n\r\n");
-	mg_printf(conn, "Connected devices: %d\n", m_connected_devices);
-	return 1;
+    mg_printf(conn,
+              "HTTP/1.1 200 OK\r\nContent-Type: "
+              "text/html\r\nConnection: close\r\n\r\n");
+    mg_printf(conn, "Connected devices: %d\n", m_connected_devices);
+    return 1;
 }
 
 int DevicesHandler(struct mg_connection *conn, void *cbdata)
 {
-	mg_printf(conn,
-	          "HTTP/1.1 200 OK\r\nContent-Type: "
-	          "application/json\r\nConnection: close\r\n\r\n");
-	uint8_t i = 0;
-	mg_printf(conn, "{\r\n\"devices\": [");
-	for(i=0;i<m_connected_devices;i++)
-	{
-		mg_printf(conn, "{\r\n\"id\":\"%d\",\r\n", i);
-		mg_printf(conn, "\"battery\":%d,\r\n", battery[i]);
-		mg_printf(conn, "\"heart_rate\":%d\r\n}", heart[i]);
-		if(i+1<m_connected_devices)
-		{
-			mg_printf(conn, ",\r\n");
-		}
-	}
-	mg_printf(conn, "]\r\n}");
-	return 1;
+    mg_printf(conn,
+              "HTTP/1.1 200 OK\r\nContent-Type: "
+              "application/json\r\nConnection: close\r\n\r\n");
+    uint8_t i = 0;
+    mg_printf(conn, "{\r\n\"devices\": [");
+    for(i=0;i<m_connected_devices;i++)
+    {
+        mg_printf(conn, "{\r\n\"id\":\"%d\",\r\n", i);
+        mg_printf(conn, "\"battery\":%d,\r\n", battery[i]);
+        mg_printf(conn, "\"heart_rate\":%d\r\n}", heart[i]);
+        if(i+1<m_connected_devices)
+        {
+            mg_printf(conn, ",\r\n");
+        }
+    }
+    mg_printf(conn, "]\r\n}");
+    return 1;
 }
 
 int log_message(const struct mg_connection *conn, const char *message)
 {
-	printf("LOG");
-	return 1;
+    printf("LOG");
+    return 1;
 }
 
 /**@brief Function for application main entry.
@@ -1036,34 +1036,34 @@ int main(int argc, char * argv[])
 
 
     const char *options[] = {"listening_ports",
-							 "8080",
-							 "request_timeout_ms",
-							 "10000",
-							 "enable_auth_domain_check",
-							 "no",
-							 0};
+                             "8080",
+                             "request_timeout_ms",
+                             "10000",
+                             "enable_auth_domain_check",
+                             "no",
+                             0};
 
     struct mg_callbacks callbacks;
     struct mg_context *ctx;
-	mg_init_library(0);
-	int port_cnt;
-	struct mg_server_ports ports[32];
-	memset(&callbacks, 0, sizeof(callbacks));
-	callbacks.log_message = log_message;
+    mg_init_library(0);
+    int port_cnt;
+    struct mg_server_ports ports[32];
+    memset(&callbacks, 0, sizeof(callbacks));
+    callbacks.log_message = log_message;
 
-	ctx = mg_start(&callbacks, 0, options);
+    ctx = mg_start(&callbacks, 0, options);
 
-	if (ctx == NULL) {
-		printf("Cannot start CivetWeb - mg_start failed.\n");
-		return 1;
-	}
+    if (ctx == NULL) {
+        printf("Cannot start CivetWeb - mg_start failed.\n");
+        return 1;
+    }
 
-	mg_set_request_handler(ctx, "", HomeHandler, 0);
-	mg_set_request_handler(ctx, "/info", InfoHandler, 0);
-	mg_set_request_handler(ctx, "/devices", DevicesHandler, 0);
+    mg_set_request_handler(ctx, "", HomeHandler, 0);
+    mg_set_request_handler(ctx, "/info", InfoHandler, 0);
+    mg_set_request_handler(ctx, "/devices", DevicesHandler, 0);
 
-	memset(ports, 0, sizeof(ports));
-	port_cnt = mg_get_server_ports(ctx, 32, ports);
+    memset(ports, 0, sizeof(ports));
+    port_cnt = mg_get_server_ports(ctx, 32, ports);
 
     if (argc > 2)
     {
